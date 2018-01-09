@@ -79,6 +79,7 @@
 	</dependencies>
 	
 	<build>
+		<finalName>report-query-sanitiser</finalName>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -97,6 +98,45 @@
 					</dependency>
 				</dependencies>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-compiler-plugin</artifactId>
+				<version>2.3.2</version>
+				<configuration>
+					<source>${jdk.version}</source>
+					<target>${jdk.version}</target>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
+
+	<organization>
+		<name>James Farrugia</name>
+		<url>https://jamesfarrugia.com</url>
+	</organization>
+
+	<distributionManagement>
+		<repository>
+			<id>local-nexus</id>
+			<name>Internal Releases</name>
+			<url>http://10.0.0.13:8081/nexus/content/repositories/releases/</url>
+		</repository>
+		<snapshotRepository>
+			<id>local-nexus</id>
+			<name>Internal Snapshots</name>
+			<url>http://10.0.0.13:8081/nexus/content/repositories/snapshots/</url>
+		</snapshotRepository>
+	</distributionManagement>
+	<repositories>
+		<repository>
+			<id>local-nexus-snapshots</id>
+			<name>Local jamesfarrugia.home nexus server for snapshots</name>
+			<url>http://10.0.0.13:8081/nexus/content/repositories/snapshots/</url>
+		</repository>
+		<repository>
+			<id>local-nexus-releases</id>
+			<name>Local jamesfarrugia.home nexus server for releases</name>
+			<url>http://10.0.0.13:8081/nexus/content/repositories/releases/</url>
+		</repository>
+	</repositories>
 </project>
