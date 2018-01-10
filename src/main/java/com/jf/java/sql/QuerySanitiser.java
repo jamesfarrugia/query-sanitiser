@@ -1,7 +1,9 @@
 package com.jf.java.sql;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import net.sf.jsqlparser.JSQLParserException;
 import net.sf.jsqlparser.expression.BinaryExpression;
+import net.sf.jsqlparser.expression.CastExpression;
 import net.sf.jsqlparser.expression.DoubleValue;
 import net.sf.jsqlparser.expression.Expression;
 import net.sf.jsqlparser.expression.Function;
@@ -17,6 +20,7 @@ import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.Parenthesis;
 import net.sf.jsqlparser.expression.StringValue;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.operators.relational.IsNullExpression;
 import net.sf.jsqlparser.parser.CCJSqlParserUtil;
 import net.sf.jsqlparser.schema.Column;
 import net.sf.jsqlparser.schema.Table;
@@ -82,6 +86,7 @@ public class QuerySanitiser
 	{
 		Map<String, Table> tblIndex = new HashMap<String, Table>();
 		Map<String, SubSelect> subSelIndex = new HashMap<String, SubSelect>();
+		Set<String> aliases = new HashSet<>();
 		
 		Statement stmt = null;
 		try
@@ -99,7 +104,7 @@ public class QuerySanitiser
 		Select selection = (Select) stmt;
 		SelectBody selBody = selection.getSelectBody();
 		
-		doProcessSelect(selBody, tblIndex, subSelIndex, constraints);
+		doProcessSelect(selBody, tblIndex, subSelIndex, aliases, constraints);
 	}
 	
 	/**
@@ -109,12 +114,14 @@ public class QuerySanitiser
 	 * @param selBody
 	 * @param tblIndex
 	 * @param subSelIndex
+	 * @param aliases 
 	 * @param constraints 
 	 */
 	private void doProcessSelect(
 			SelectBody selBody, 
 			Map<String, Table> tblIndex, 
 			Map<String, SubSelect> subSelIndex,
+			Set<String> aliases,
 			QueryConstraints constraints)
 	{
 		log.trace("Processing SELECT");
@@ -123,11 +130,24 @@ public class QuerySanitiser
 		
 		PlainSelect select = (PlainSelect) selBody;
 		
+		log.trace("Processing SELECTed aliases");
+		for (SelectItem si : select.getSelectItems())
+		{
+			if (si instanceof SelectExpressionItem)
+			{
+				SelectExpressionItem sei = (SelectExpressionItem) si;
+				if (sei.getExpression() instanceof Column)
+					aliases.add(((Column)sei.getExpression()).getColumnName());
+				if (sei.getAlias() != null)
+					aliases.add(sei.getAlias().getName());
+			}
+		}
+		
 		if (select.getFromItem() != null)
 		{
 			log.trace("Processing FROM");
 			FromItem from = select.getFromItem();
-			doProcessFrom(from, tblIndex, subSelIndex, constraints);
+			doProcessFrom(from, tblIndex, subSelIndex, aliases, constraints);
 		}
 		
 		if (select.getJoins() != null)
@@ -138,13 +158,14 @@ public class QuerySanitiser
 				log.trace(join.toString());
 				
 				FromItem from = join.getRightItem();
-				doProcessFrom(from, tblIndex, subSelIndex, constraints);
+				doProcessFrom(from, tblIndex, subSelIndex, aliases, constraints);
 				
 				if (join.getOnExpression() != null)
 					doProcessExpression(
 							join.getOnExpression(), 
 							tblIndex, 
-							subSelIndex, 
+							subSelIndex,
+							aliases,
 							constraints);
 			}
 		}
@@ -153,21 +174,21 @@ public class QuerySanitiser
 		{
 			log.trace("Processing WHERE");
 			doProcessExpression(select.getWhere(), tblIndex, 
-					subSelIndex, constraints);
+					subSelIndex, aliases, constraints);
 		}
 		
 		if (select.getGroupByColumnReferences() != null)
 		{
 			log.trace("Processing GROUP BY");
 			for (Expression gb : select.getGroupByColumnReferences())
-				doProcessExpression(gb, tblIndex, subSelIndex, constraints);
+				doProcessExpression(gb, tblIndex, subSelIndex, aliases, constraints);
 		}
 		
 		if (select.getHaving() != null)
 		{
 			log.trace("Processing HAVING");
 			doProcessExpression(select.getHaving(), tblIndex, 
-					subSelIndex, constraints);
+					subSelIndex, aliases, constraints);
 		}
 		
 		log.trace("Processing FIELDS");
@@ -177,7 +198,7 @@ public class QuerySanitiser
 			{
 				SelectExpressionItem sei = (SelectExpressionItem) si;
 				Expression exp = sei.getExpression();
-				doProcessExpression(exp, tblIndex, subSelIndex, constraints);
+				doProcessExpression(exp, tblIndex, subSelIndex, aliases, constraints);
 			}
 			else if (si instanceof AllColumns)
 			{
@@ -198,7 +219,7 @@ public class QuerySanitiser
 				{
 					SelectExpressionItem sei = (SelectExpressionItem) distinctItem;
 					Expression exp = sei.getExpression();
-					doProcessExpression(exp, tblIndex, subSelIndex, constraints);
+					doProcessExpression(exp, tblIndex, subSelIndex, aliases, constraints);
 				}
 			}
 		}
@@ -208,7 +229,7 @@ public class QuerySanitiser
 			log.trace("Processing ORDER BY");
 			for (OrderByElement oe : select.getOrderByElements())
 				doProcessExpression(oe.getExpression(), tblIndex, 
-						subSelIndex, constraints);
+						subSelIndex, aliases, constraints);
 		}
 	}
 	
@@ -219,12 +240,14 @@ public class QuerySanitiser
 	 * @param from item to process
 	 * @param tblIndex Index of table aliases
 	 * @param subSelIndex Index of sub-select aliases
+	 * @param aliases 
 	 * @param constraints constraints for the query
 	 */
 	private void doProcessFrom(
 			FromItem from, 
 			Map<String, Table> tblIndex, 
 			Map<String, SubSelect> subSelIndex,
+			Set<String> aliases,
 			QueryConstraints constraints)
 	{
 		if (from instanceof Table)
@@ -242,7 +265,7 @@ public class QuerySanitiser
 		{
 			SubSelect sub= (SubSelect) from;
 			log.trace("From of type sub-select");
-			doProcessSelect(sub.getSelectBody(), tblIndex, subSelIndex, constraints);
+			doProcessSelect(sub.getSelectBody(), tblIndex, subSelIndex, aliases, constraints);
 			
 			if (from.getAlias() != null)
 				subSelIndex.put(from.getAlias().getName(), sub);
@@ -259,12 +282,14 @@ public class QuerySanitiser
 	 * @param exp
 	 * @param tblIndex
 	 * @param subselIndex
+	 * @param aliases 
 	 * @param constraints 
 	 */
 	private void doProcessExpression(
 			Expression exp, 
 			Map<String, Table> tblIndex, 
 			Map<String, SubSelect> subselIndex,
+			Set<String> aliases,
 			QueryConstraints constraints)
 	{
 		log.trace("Processing expression " + exp);
@@ -274,7 +299,9 @@ public class QuerySanitiser
 			String tbl = col.getTable().getFullyQualifiedName();
 			log.trace("COLM:" + col.getColumnName() + " OF " + tbl);
 			
-			if (!tblIndex.containsKey(tbl) && !subselIndex.containsKey(tbl))
+			if (!tblIndex.containsKey(tbl) && 
+					!subselIndex.containsKey(tbl) && 
+					!aliases.contains(col.getColumnName()))
 				error("B003", tbl);
 			
 			if (tblIndex.containsKey(tbl))
@@ -285,7 +312,7 @@ public class QuerySanitiser
 		else if (exp instanceof JsonExpression)
 		{
 			JsonExpression json = (JsonExpression) exp;
-			doProcessExpression(json.getColumn(), tblIndex, subselIndex, constraints);
+			doProcessExpression(json.getColumn(), tblIndex, subselIndex, aliases, constraints);
 			log.trace("JSON:" + json + " - on column " + json.getColumn());
 		}
 		else if (exp instanceof Function)
@@ -298,7 +325,7 @@ public class QuerySanitiser
 			ExpressionList args = func.getParameters();
 			if (args != null)
 				for (Expression e : args.getExpressions())
-					doProcessExpression(e, tblIndex, subselIndex, constraints);
+					doProcessExpression(e, tblIndex, subselIndex, aliases, constraints);
 			
 			log.trace("FUNC:" + func.getName() + " (" + args + ")");
 		}
@@ -307,8 +334,8 @@ public class QuerySanitiser
 			BinaryExpression bin = (BinaryExpression) exp;
 			Expression left = bin.getLeftExpression();
 			Expression right = bin.getRightExpression();
-			doProcessExpression(left, tblIndex, subselIndex, constraints);
-			doProcessExpression(right, tblIndex, subselIndex, constraints);
+			doProcessExpression(left, tblIndex, subselIndex, aliases, constraints);
+			doProcessExpression(right, tblIndex, subselIndex, aliases, constraints);
 			log.trace("BINR: " + bin.getStringExpression() + "(" + left + "," + right + ")");
 		}
 		else if (exp instanceof LongValue || exp instanceof DoubleValue)
@@ -323,11 +350,23 @@ public class QuerySanitiser
 		else if (exp instanceof Parenthesis)
 		{
 			Parenthesis par = (Parenthesis) exp;
-			doProcessExpression(par.getExpression(), tblIndex, subselIndex, constraints);
+			doProcessExpression(par.getExpression(), tblIndex, subselIndex, aliases, constraints);
 			log.trace("PRTS:" + par.getExpression());
 		}
+		else if (exp instanceof IsNullExpression)
+		{
+			IsNullExpression isNull = (IsNullExpression) exp;
+			doProcessExpression(isNull.getLeftExpression(), tblIndex, subselIndex, aliases, constraints);
+			log.trace("INUL:" + isNull.getLeftExpression());
+		}
+		else if (exp instanceof CastExpression)
+		{
+			CastExpression cast = (CastExpression) exp;
+			doProcessExpression(cast.getLeftExpression(), tblIndex, subselIndex, aliases, constraints);
+			log.trace("CAST:" + cast.getLeftExpression() + " to " + cast.getType().getDataType());
+		}
 		else
-			error("B004");
+			error("B004", exp.getClass().toString());
 	}
 	
 	

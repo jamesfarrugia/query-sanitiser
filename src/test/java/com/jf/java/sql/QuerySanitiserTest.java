@@ -294,4 +294,36 @@ public class QuerySanitiserTest
 				"where fp.category ='t1' and operations.business_transaction.urid = 'xtz' and fp.id < 8.8 ", 
 				constraints);
 	}
+	
+	/**
+	 * Test a valid insert, should fail
+	 */
+	@Test
+	public void doTest_CastingAndSums_ShouldPass()
+	{
+		QueryConstraints constraints = new QueryConstraints();
+		constraints.setTableWhitelist(Arrays.asList(
+				"transaction", 
+				"transaction_line",
+				"operations.composite",
+				"product"));
+		constraints.setFunctionWhitelist(Arrays.asList(
+				"now", "sum"));
+		
+		sanitser.doSanitise(
+				"select p.composite, sum(cast(l.line_params->>'quantity' as numeric)) as qty, t.details->>'ship' as ship\n" + 
+				"from transaction_line l\n" + 
+				"join product p on p.composite = l.product\n" + 
+				"join transaction t on l.transaction = t.urid and t.closed is not null and t.type = 'e8033084-b14c-4ecf-aa9d-d838e0516414' and t.void is null\n" + 
+				"where p.category = '1bfbcca7-6fa7-4026-9926-93e1443c2b83'\n" + 
+				"group by p.composite,ship ", 
+				constraints);
+	}
+	
+	/*select p.composite, sum(cast(l.line_params->>'quantity' as numeric)) as qty, t.details->>'ship' as ship
+from transaction_line l
+join product p on p.composite = l.product
+join transaction t on l.transaction = t.urid and t.closed is not null and t.type = 'e8033084-b14c-4ecf-aa9d-d838e0516414' and t.void is null
+where p.category = '1bfbcca7-6fa7-4026-9926-93e1443c2b83'
+group by p.composite,ship;*/
 }
