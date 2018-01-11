@@ -18,6 +18,7 @@ import net.sf.jsqlparser.expression.Function;
 import net.sf.jsqlparser.expression.JsonExpression;
 import net.sf.jsqlparser.expression.LongValue;
 import net.sf.jsqlparser.expression.Parenthesis;
+import net.sf.jsqlparser.expression.SignedExpression;
 import net.sf.jsqlparser.expression.StringValue;
 import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
 import net.sf.jsqlparser.expression.operators.relational.IsNullExpression;
@@ -341,6 +342,12 @@ public class QuerySanitiser
 		else if (exp instanceof LongValue || exp instanceof DoubleValue)
 		{
 			log.trace("NMBR:" + exp.toString());
+		}
+		else if (exp instanceof SignedExpression)
+		{
+			SignedExpression signed = (SignedExpression) exp;
+			doProcessExpression(signed.getExpression(), tblIndex, subselIndex, aliases, constraints);
+			log.trace("SIGN:" + signed.getExpression() + "(" + signed.getSign() + ")");
 		}
 		else if (exp instanceof StringValue)
 		{
