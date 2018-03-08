@@ -35,7 +35,10 @@ import net.sf.jsqlparser.statement.select.Select;
 import net.sf.jsqlparser.statement.select.SelectBody;
 import net.sf.jsqlparser.statement.select.SelectExpressionItem;
 import net.sf.jsqlparser.statement.select.SelectItem;
+import net.sf.jsqlparser.statement.select.SetOperation;
+import net.sf.jsqlparser.statement.select.SetOperationList;
 import net.sf.jsqlparser.statement.select.SubSelect;
+import net.sf.jsqlparser.statement.select.UnionOp;
 
 /**
  * Service to sanitise queries using the passed constraints
@@ -72,6 +75,7 @@ public class QuerySanitiser
 		errorMap.put("B005", "Table not allowed in query");
 		errorMap.put("B006", "Illegal selections");
 		errorMap.put("B007", "Function not allowed in query");
+		errorMap.put("B008", "Set operation not allowed");
 		errorMap.put("S001", "Failed to parse query");
 	}
 	
@@ -126,8 +130,25 @@ public class QuerySanitiser
 			QueryConstraints constraints)
 	{
 		log.trace("Processing SELECT");
+		
 		if (!(selBody instanceof PlainSelect))
-			error("B001");
+		{
+			if (selBody instanceof SetOperationList)
+			{
+				for (SetOperation op : ((SetOperationList) selBody).getOperations())
+					if (!(op instanceof UnionOp))
+						error("B008");
+				
+				for (SelectBody sel : ((SetOperationList)selBody).getSelects())
+					doProcessSelect(sel, tblIndex, subSelIndex, aliases, constraints);
+				
+				return;
+			}
+			else
+			{
+				error("B001");
+			}
+		}
 		
 		PlainSelect select = (PlainSelect) selBody;
 		

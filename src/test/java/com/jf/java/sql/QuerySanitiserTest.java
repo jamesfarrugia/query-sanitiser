@@ -320,6 +320,30 @@ public class QuerySanitiserTest
 				constraints);
 	}
 	
+	/**
+	 * Test a valid insert, should fail
+	 */
+	@Test
+	public void doTest_Union_ShouldPass()
+	{
+		QueryConstraints constraints = new QueryConstraints();
+		constraints.setTableWhitelist(Arrays.asList(
+				"transaction", 
+				"transaction_line",
+				"operations.composite",
+				"product"));
+		constraints.setFunctionWhitelist(Arrays.asList(
+				"now", "sum"));
+		
+		sanitser.doSanitise(
+				"select p.composite\n" + 
+				"from transaction_line l\n" + 
+				"union\n" + 
+				"select p.composite\n" + 
+				"from transaction_line l\n", 
+				constraints);
+	}
+	
 	/*select p.composite, sum(cast(l.line_params->>'quantity' as numeric)) as qty, t.details->>'ship' as ship
 from transaction_line l
 join product p on p.composite = l.product
